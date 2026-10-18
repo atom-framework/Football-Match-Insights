@@ -3,13 +3,15 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Football fixtures, source-aware match insights, and transparent probability estimates
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: football
+    description: Football match, team, competition, and prediction data
 paths:
   /healthz:
     get:
@@ -24,6 +26,165 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /football/matches:
+    get:
+      operationId: listFootballMatches
+      tags: [football]
+      summary: List football fixtures and match insights for a date
+      parameters:
+        - in: query
+          name: date
+          required: true
+          description: Calendar date to query in YYYY-MM-DD format
+          schema:
+            type: string
+            pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+        - in: query
+          name: league
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [all, upcoming, live, finished]
+      responses:
+        "200":
+          description: Date-scoped fixtures, predictions, provider freshness, and warnings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FootballMatchList"
+        "400":
+          description: Invalid date or filter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: No fixture source returned usable data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /football/match-detail:
+    get:
+      operationId: getFootballMatch
+      tags: [football]
+      summary: Get match details, team profiles, form, and prediction factors
+      parameters:
+        - in: query
+          name: matchId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: date
+          required: true
+          description: Calendar date for this event in YYYY-MM-DD format
+          schema:
+            type: string
+            pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+      responses:
+        "200":
+          description: Match details and source-derived team information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FootballMatchDetail"
+        "400":
+          description: Invalid match ID or date
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Match was not found in the selected date's sources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: Match source is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /football/leagues:
+    get:
+      operationId: listFootballLeagues
+      tags: [football]
+      summary: List competitions available for a selected date
+      parameters:
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+      responses:
+        "200":
+          description: Competitions returned by the current fixture feeds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FootballLeagueList"
+        "400":
+          description: Invalid calendar date
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: No fixture source returned usable data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /football/summary:
+    get:
+      operationId: getFootballSummary
+      tags: [football]
+      summary: Get a compact summary of fixtures and predictions for a date
+      parameters:
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+      responses:
+        "200":
+          description: Date-scoped totals and feed health
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FootballSummary"
+        "503":
+          description: No fixture source returned usable data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /football/sources:
+    get:
+      operationId: getFootballSources
+      tags: [football]
+      summary: Describe data providers, freshness, and estimation methodology
+      responses:
+        "200":
+          description: Provider attribution and prediction disclosure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FootballSources"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +194,306 @@ components:
           type: string
       required:
         - status
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    FootballTeam:
+      type: object
+      properties:
+        id:
+          type: ["string", "null"]
+        name:
+          type: string
+        shortName:
+          type: ["string", "null"]
+        badgeUrl:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
+      required: [id, name, shortName, badgeUrl, country]
+    FootballLeague:
+      type: object
+      properties:
+        id:
+          type: ["string", "null"]
+        name:
+          type: string
+        country:
+          type: ["string", "null"]
+        badgeUrl:
+          type: ["string", "null"]
+        source:
+          type: string
+      required: [id, name, country, badgeUrl, source]
+    MatchProbabilities:
+      type: object
+      description: Model-estimated outcome percentages; home, draw, and away always sum to 100.
+      properties:
+        home:
+          type: integer
+          minimum: 0
+          maximum: 100
+        draw:
+          type: integer
+          minimum: 0
+          maximum: 100
+        away:
+          type: integer
+          minimum: 0
+          maximum: 100
+      required: [home, draw, away]
+    PredictionFactor:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        summary:
+          type: string
+        effect:
+          type: string
+          enum: [home, away, balanced, unavailable]
+        weight:
+          type: number
+          minimum: 0
+          maximum: 1
+        available:
+          type: boolean
+      required: [key, label, summary, effect, weight, available]
+    PredictionEstimate:
+      type: object
+      properties:
+        probabilities:
+          $ref: "#/components/schemas/MatchProbabilities"
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+        confidenceLabel:
+          type: string
+          enum: [low, moderate, good]
+        model:
+          type: string
+        factors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PredictionFactor"
+        disclaimer:
+          type: string
+      required: [probabilities, confidence, confidenceLabel, model, factors, disclaimer]
+    FootballMatch:
+      type: object
+      properties:
+        id:
+          type: string
+        sourceEventId:
+          type: string
+        primarySource:
+          type: string
+          enum: [TheSportsDB, ESPN]
+        sources:
+          type: array
+          items:
+            type: string
+        sourceUrls:
+          type: array
+          items:
+            type: string
+        homeTeam:
+          $ref: "#/components/schemas/FootballTeam"
+        awayTeam:
+          $ref: "#/components/schemas/FootballTeam"
+        league:
+          $ref: "#/components/schemas/FootballLeague"
+        date:
+          type: string
+        kickoffLocal:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [upcoming, live, finished, paused, postponed, canceled, unknown]
+        venue:
+          type: ["string", "null"]
+        round:
+          type: ["string", "null"]
+        season:
+          type: ["string", "null"]
+        homeScore:
+          type: ["integer", "null"]
+        awayScore:
+          type: ["integer", "null"]
+        prediction:
+          $ref: "#/components/schemas/PredictionEstimate"
+        updatedAt:
+          type: string
+      required:
+        - id
+        - sourceEventId
+        - primarySource
+        - sources
+        - sourceUrls
+        - homeTeam
+        - awayTeam
+        - league
+        - date
+        - kickoffLocal
+        - status
+        - venue
+        - round
+        - season
+        - homeScore
+        - awayScore
+        - prediction
+        - updatedAt
+    ProviderStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [ready, degraded, unavailable]
+        attributionUrl:
+          type: string
+        purpose:
+          type: string
+        lastSuccessAt:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+      required: [name, status, attributionUrl, purpose, lastSuccessAt, message]
+    FootballMatchList:
+      type: object
+      properties:
+        date:
+          type: string
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/FootballMatch"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderStatus"
+        warnings:
+          type: array
+          items:
+            type: string
+        refreshedAt:
+          type: string
+      required: [date, matches, sources, warnings, refreshedAt]
+    FootballLeagueList:
+      type: object
+      properties:
+        date:
+          type: string
+        leagues:
+          type: array
+          items:
+            $ref: "#/components/schemas/FootballLeague"
+      required: [date, leagues]
+    RecentMatch:
+      type: object
+      properties:
+        date:
+          type: string
+        opponent:
+          type: string
+        location:
+          type: string
+          enum: [home, away]
+        scoreFor:
+          type: ["integer", "null"]
+        scoreAgainst:
+          type: ["integer", "null"]
+        result:
+          type: string
+          enum: [W, D, L, unknown]
+        source:
+          type: string
+      required: [date, opponent, location, scoreFor, scoreAgainst, result, source]
+    FootballTeamProfile:
+      type: object
+      properties:
+        id:
+          type: ["string", "null"]
+        name:
+          type: string
+        country:
+          type: ["string", "null"]
+        badgeUrl:
+          type: ["string", "null"]
+        stadium:
+          type: ["string", "null"]
+        formedYear:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        recentMatches:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecentMatch"
+      required: [id, name, country, badgeUrl, stadium, formedYear, description, recentMatches]
+    FootballMatchDetail:
+      type: object
+      properties:
+        match:
+          $ref: "#/components/schemas/FootballMatch"
+        homeTeamProfile:
+          $ref: "#/components/schemas/FootballTeamProfile"
+        awayTeamProfile:
+          $ref: "#/components/schemas/FootballTeamProfile"
+        headToHead:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecentMatch"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderStatus"
+        warnings:
+          type: array
+          items:
+            type: string
+      required: [match, homeTeamProfile, awayTeamProfile, headToHead, sources, warnings]
+    FootballSummary:
+      type: object
+      properties:
+        date:
+          type: string
+        totalMatches:
+          type: integer
+        upcomingMatches:
+          type: integer
+        liveMatches:
+          type: integer
+        finishedMatches:
+          type: integer
+        averageHomeProbability:
+          type: integer
+        averageDrawProbability:
+          type: integer
+        averageAwayProbability:
+          type: integer
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderStatus"
+      required: [date, totalMatches, upcomingMatches, liveMatches, finishedMatches, averageHomeProbability, averageDrawProbability, averageAwayProbability, sources]
+    FootballSources:
+      type: object
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderStatus"
+        predictionMethod:
+          type: string
+        predictionDisclaimer:
+          type: string
+      required: [providers, predictionMethod, predictionDisclaimer]
 

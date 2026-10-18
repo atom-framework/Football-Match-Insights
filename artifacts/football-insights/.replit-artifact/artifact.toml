@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Football Insights"
+description = "A responsive football match insights app with date-based fixtures, team and competition information, source attribution, and transparent probability estimates."
+version = "1.0.0"
+id = "artifacts/football-insights"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18768
+
+[services.development]
+run = "pnpm --filter @workspace/football-insights run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/football-insights", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/football-insights/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18768"
+BASE_PATH = "/"
